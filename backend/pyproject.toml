@@ -18,6 +18,7 @@ dependencies = [
     "pysilero-vad>=3.4.0",
     "sounddevice>=0.5.6",
     "spacy>=3.8.18",
+    "websockets>=17.4",
 ]
 
 [project.scripts]

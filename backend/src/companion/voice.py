@@ -1,4 +1,5 @@
 import asyncio
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from enum import StrEnum
@@ -8,6 +9,7 @@ import numpy as np
 from companion.audio import AudioIO
 from companion.config import Settings
 from companion.conversation import Conversation
+from companion.hub import Event
 from companion.reply import Mood, MoodEvent, SentenceEvent
 from companion.stt import Transcriber
 from companion.tts import Synthesizer
@@ -21,6 +23,7 @@ class State(StrEnum):
     LISTENING = "listening"
     THINKING = "thinking"
     SPEAKING = "speaking"
+    SLEEPING = "sleeping"
 
 
 @dataclass
@@ -51,8 +54,15 @@ class VoiceLoop:
     into the conversation history.
     """
 
-    def __init__(self, io: AudioIO, models: "Models", settings: Settings, verbose: bool = True) -> None:
-        self.io, self.settings = io, settings
+    def __init__(
+        self,
+        io: AudioIO,
+        models: "Models",
+        settings: Settings,
+        publish: Callable[[Event], None] = lambda event: None,
+        verbose: bool = True,
+    ) -> None:
+        self.io, self.settings, self.publish = io, settings, publish
         self.convo, self.stt, self.tts, self._mlx = models.convo, models.stt, models.tts, models.mlx
         self.verbose = verbose
         self.state = State.IDLE
@@ -60,16 +70,34 @@ class VoiceLoop:
         self._task: asyncio.Task | None = None
         self._turn: Turn | None = None
         self._unanswered: np.ndarray | None = None
+        self._mic_level = 0.0
+        self._idle_since = io.now()
         self._segmenter = Segmenter(threshold=settings.vad_threshold, start_ms=settings.start_ms, end_silence_ms=settings.pause_ms)
 
     async def run(self) -> None:
         vad, rechunk = SileroVad(), Rechunker()
-        async for samples in self.io.frames():
-            for chunk in rechunk.push(samples):
-                speaking = self.state is State.SPEAKING
-                self._segmenter.start_ms = self.settings.barge_in_ms if speaking else self.settings.start_ms
-                for event in self._segmenter.feed(chunk, vad(chunk)):
-                    self._on_vad(event)
+        levels = asyncio.create_task(self._report_levels())
+        try:
+            async for samples in self.io.frames():
+                self._mic_level = max(float(np.sqrt(np.mean(samples**2))), self._mic_level * 0.8)
+                self._feed(rechunk.push(samples), vad)
+        finally:
+            levels.cancel()
+
+    def _feed(self, chunks: list[np.ndarray], vad: SileroVad) -> None:
+        for chunk in chunks:
+            speaking = self.state is State.SPEAKING
+            self._segmenter.start_ms = self.settings.barge_in_ms if speaking else self.settings.start_ms
+            for event in self._segmenter.feed(chunk, vad(chunk)):
+                self._on_vad(event)
+
+    async def _report_levels(self) -> None:
+        """Loudness for the mouth and the listening ring, and dozing off after a long quiet spell."""
+        while True:
+            await asyncio.sleep(1 / 30)
+            self.publish({"type": "levels", "speech": round(self.io.level, 4), "mic": round(self._mic_level, 4)})
+            if self.state is State.IDLE and self.io.now() - self._idle_since > self.settings.sleep_after_s:
+                self._set(State.SLEEPING)
 
     def _on_vad(self, event: VadEvent) -> None:
         match event:
@@ -122,6 +150,7 @@ class VoiceLoop:
             match timed.event:
                 case MoodEvent(mood):
                     turn.mood = mood
+                    self.publish({"type": "mood", "mood": mood.value})
                 case SentenceEvent(sentence):
                     turn.first_sentence_at = turn.first_sentence_at or self.io.now()
                     chunks = await loop.run_in_executor(self._mlx, lambda: list(self.tts.synthesize(sentence, turn.mood)))
@@ -161,10 +190,16 @@ class VoiceLoop:
         return f"{DIM}{turn.latency:.2f} s from end of speech to voice ({breakdown}){RESET}"
 
     def _set(self, state: State) -> None:
-        if state is not self.state:
-            self.state = state
-            if state is State.LISTENING:
-                self._say(f"{DIM}· listening{RESET}")
+        if state is self.state:
+            return
+        self.state = state
+        if state is State.IDLE:
+            self._idle_since = self.io.now()
+        self.publish({"type": "state", "state": state.value})
+        if state is State.LISTENING:
+            self._say(f"{DIM}· listening{RESET}")
+        elif state is State.SLEEPING:
+            self._say(f"{DIM}· dozing off{RESET}")
 
     def _say(self, line: str) -> None:
         if self.verbose and line:
@@ -206,10 +241,14 @@ async def run() -> None:
     from companion.audio import DeviceAudio
 
     settings = Settings.from_env()
+    from companion.hub import Hub
+
     models = await load(settings)
+    hub = Hub(port=settings.hub_port)
+    await hub.start()
     io = DeviceAudio(mic=settings.mic, speaker=settings.speaker, echo_cancellation=settings.echo_cancellation)
-    print(f"{DIM}Listening. Just talk. Ctrl+C quits.{RESET}\n", flush=True)
-    await VoiceLoop(io, models, settings).run()
+    print(f"{DIM}Listening. Just talk. Ctrl+C quits. Overlay link on ws://127.0.0.1:{hub.port}{RESET}\n", flush=True)
+    await VoiceLoop(io, models, settings, publish=hub.publish).run()
 
 
 def main() -> None:

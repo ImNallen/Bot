@@ -4,9 +4,13 @@ Speech is generated with a different Kokoro voice and fed in as the microphone. 
 aloud; the simulated speaker only records when audio would start and stop. There is no echo in
 this setup, so self-interruption from the speakers has to be checked live.
 
-Usage: uv run python evals/voice_sim.py
+Usage: uv run python evals/voice_sim.py [--hub]
+
+--hub also publishes state, mood and speech levels on ws://127.0.0.1:8765, so a running overlay
+acts out the scripted conversation.
 """
 
+import argparse
 import asyncio
 import statistics
 import time
@@ -39,6 +43,7 @@ class SimAudio:
     plays: list[float] = field(default_factory=list)
     stops: list[float] = field(default_factory=list)
     _play_end: float = 0.0
+    _clips: list[tuple[float, np.ndarray, int]] = field(default_factory=list)
 
     def now(self) -> float:
         return time.monotonic()
@@ -49,12 +54,22 @@ class SimAudio:
 
     @property
     def level(self) -> float:
+        """RMS of the 20 ms of scheduled audio that would be coming out of the speaker right now."""
+        now = self.now()
+        if now >= self._play_end:
+            return 0.0
+        for start, audio, rate in self._clips:
+            offset = int((now - start) * rate)
+            if 0 <= offset < len(audio):
+                window = audio[offset : offset + rate // 50]
+                return float(np.sqrt(np.mean(window**2))) if len(window) else 0.0
         return 0.0
 
     def play(self, audio: np.ndarray, sample_rate: int) -> float:
         start = max(self.now(), self._play_end)
         self._play_end = start + len(audio) / sample_rate
         self.plays.append(start)
+        self._clips.append((start, audio, sample_rate))
         return start
 
     def stop(self) -> None:
@@ -62,6 +77,7 @@ class SimAudio:
             now = self.now()
             self.stops.append(now)
             self.plays = [p for p in self.plays if p <= now]
+            self._clips = [c for c in self._clips if c[0] <= now]
             self._play_end = now
 
     def _answered_since(self, t: float) -> list[float]:
@@ -133,8 +149,20 @@ async def main() -> None:
         Step("barge", "Wait, stop. Tell me about sleep instead.", speech(speaker, "Wait, stop. Tell me about sleep instead."), 1.0),
         Step("say", "Thanks, that helps.", speech(speaker, "Thanks, that helps."), 1.5),
     ]
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--hub", action="store_true")
+    args = ap.parse_args()
+    publish = lambda event: None
+    if args.hub:
+        from companion.hub import Hub
+
+        hub = Hub(port=settings.hub_port)
+        await hub.start()
+        publish = hub.publish
+        await asyncio.sleep(3)
+
     io = SimAudio(steps)
-    loop = VoiceLoop(io, models, settings)
+    loop = VoiceLoop(io, models, settings, publish=publish)
     await loop.run()
 
     print("\n--- measured")

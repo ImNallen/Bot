@@ -3,6 +3,8 @@ import type { Frame } from "./render";
 
 const EXPRESSION_OMEGA = 4 / (motion.expressionTransitionMs / 1000);
 const GAZE_OMEGA = 28;
+/** Kokoro's speech sits around 0.05 to 0.15 RMS, so this maps typical speech to a half to fully open mouth. */
+const MOUTH_GAIN = 7;
 
 /** Critically damped spring, integrated implicitly so it stays stable at any frame rate. */
 function spring(x: number, v: number, target: number, omega: number, dt: number): [number, number] {
@@ -65,7 +67,7 @@ export class Animator {
     [this.gaze.y, this.gaze.vy] = spring(this.gaze.y, this.gaze.vy, gy, GAZE_OMEGA, dt);
 
     const speaking = this.state === "speaking";
-    const mouthTarget = speaking ? 0.15 + clamp(this.speechLevel * 4, 0, 1) * 0.85 : 0;
+    const mouthTarget = speaking ? 0.15 + clamp(this.speechLevel * MOUTH_GAIN, 0, 1) * 0.85 : 0;
     this.mouth += (mouthTarget - this.mouth) * clamp(dt / 0.05, 0, 1);
 
     const period = motion.bob.periodMs / 1000 / (this.state === "sleeping" ? 0.6 : 1);

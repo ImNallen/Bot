@@ -25,6 +25,8 @@ class Settings:
     barge_in_ms: int = 192
     pause_ms: int = 300
     reply_gap_ms: int = 650
+    sleep_after_s: float = 300
+    hub_port: int = 8765
 
     @classmethod
     def from_env(cls) -> "Settings":

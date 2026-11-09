@@ -61,7 +61,11 @@ npm install
 npm run tauri dev
 ```
 
-A transparent, always-on-top window puts the bot in the bottom-right corner of your main display. Clicks pass through everywhere except the bot. Until the backend drives it, clicking the bot steps through its states and moods. It has no menu yet, so quit with `pkill -f companion-overlay`.
+A transparent, always-on-top window puts the bot in the bottom-right corner of your main display. Clicks pass through everywhere except the bot. It has no menu yet, so quit with `pkill -f companion-overlay`.
+
+Run `uv run companion-voice` in `backend/` alongside it and the two connect over `ws://127.0.0.1:8765`, in either start order. The voice loop then drives the face: listening, thinking and speaking states, the reply's mood, a mouth that moves with the bot's voice, and dozing off after five idle minutes (`COMPANION_SLEEP_AFTER_S`). Without the backend, clicking the bot steps through its states and moods.
+
+`uv run python evals/voice_sim.py --hub` plays a scripted conversation into a running overlay, with no microphone needed.
 
 `npm run dev` and http://localhost:1420/dev.html shows every expression and state in both themes, plus a live bot with buttons. `npm test` runs the animation tests.
 
