@@ -15,6 +15,7 @@ async def run() -> None:
     print(f"{DIM}Loading {settings.model}…{RESET}", flush=True)
     await llm.warm()
     convo = Conversation(llm, settings)
+    await convo.prime()
     print(f"{DIM}{HELP}{RESET}\n")
     while True:
         try:
@@ -35,7 +36,7 @@ async def run() -> None:
         async for timed in convo.reply(text):
             match timed.event:
                 case MoodEvent(mood):
-                    print(f"{settings.companion_name.lower()} {DIM}[{mood}]{RESET} ›", end="", flush=True)
+                    print(f"{settings.name.lower()} {DIM}[{mood}]{RESET} ›", end="", flush=True)
                 case SentenceEvent(sentence):
                     first_sentence = first_sentence or timed.seconds
                     print(f" {sentence}", end="", flush=True)

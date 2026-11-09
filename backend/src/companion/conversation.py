@@ -27,6 +27,11 @@ class Conversation:
         self.last_raw = ""
         self.first_token_seconds: float | None = None
 
+    async def prime(self) -> None:
+        """Run the full persona prompt once so the first real reply does not pay first-request costs."""
+        async for _ in self.llm.stream(self.messages("Hello."), max_tokens=1):
+            pass
+
     def reset(self) -> None:
         self.history.clear()
 
@@ -43,18 +48,19 @@ class Conversation:
     async def reply(self, user_text: str) -> AsyncIterator[Timed]:
         start = time.perf_counter()
         parser = ReplyParser()
-        raw: list[str] = []
+        self.last_raw = ""
         self.first_token_seconds = None
-        try:
-            async for chunk in self.llm.stream(self.messages(user_text)):
-                if self.first_token_seconds is None:
-                    self.first_token_seconds = time.perf_counter() - start
-                raw.append(chunk)
-                for event in parser.feed(chunk):
-                    yield Timed(time.perf_counter() - start, event)
-            for event in parser.finish():
+        async for chunk in self.llm.stream(self.messages(user_text)):
+            if self.first_token_seconds is None:
+                self.first_token_seconds = time.perf_counter() - start
+            self.last_raw += chunk
+            for event in parser.feed(chunk):
                 yield Timed(time.perf_counter() - start, event)
-        finally:
-            self.last_raw = "".join(raw)
-            self.history += [{"role": "user", "content": user_text}, {"role": "assistant", "content": self.last_raw}]
-            self._trim()
+        for event in parser.finish():
+            yield Timed(time.perf_counter() - start, event)
+        self.record(user_text, self.last_raw)
+
+    def record(self, user_text: str, reply: str) -> None:
+        """Add a finished exchange. An interrupted reply is recorded by the caller with only what was said."""
+        self.history += [{"role": "user", "content": user_text}, {"role": "assistant", "content": reply}]
+        self._trim()

@@ -41,3 +41,16 @@ def test_prompt_only_grows_by_appending_except_at_rare_trims():
     breaks = sum(1 for prev, cur in zip(llm.prompts, llm.prompts[1:]) if cur[: len(prev)] != prev)
     assert breaks <= 30 // (turns // 2)
     assert max(len(p) for p in llm.prompts) <= 2 + len(convo.prefix) + 2 * turns
+
+
+def test_cancelled_reply_leaves_history_untouched():
+    convo = Conversation(FakeLLM(), Settings())
+
+    async def stop_after_first_event():
+        stream = convo.reply("hello")
+        first = await anext(stream)
+        await stream.aclose()
+        return first.event
+
+    assert asyncio.run(stop_after_first_event()) == MoodEvent(Mood.HAPPY)
+    assert convo.history == []

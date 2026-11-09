@@ -38,7 +38,7 @@ def _inline(examples: list[Conversation], name: str) -> str:
 
 def system_prompt(settings: Settings, examples: list[Conversation] | None = None) -> str:
     """The persona. Pass examples to embed them in the prompt; leave them out when they are sent as chat turns."""
-    name, user = settings.companion_name, settings.user_name
+    name, user = settings.name, settings.user
     moods = ", ".join(f"[mood:{m.value}]" for m in Mood)
     example_block = f"\n\nEXAMPLES\n\n{_inline(examples, name)}" if examples else ""
     turns_note = "" if examples else "\nThe earlier conversations in this chat are examples of your voice. Talk like that."
