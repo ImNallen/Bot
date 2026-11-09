@@ -24,6 +24,7 @@ dependencies = [
 [project.scripts]
 companion-chat = "companion.chat:main"
 companion-voice = "companion.voice:main"
+companion-memory = "companion.memory_cli:main"
 
 [dependency-groups]
 dev = ["pytest>=8"]

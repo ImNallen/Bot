@@ -1,5 +1,6 @@
 import os
 from dataclasses import dataclass, fields
+from pathlib import Path
 
 
 @dataclass(frozen=True)
@@ -27,6 +28,9 @@ class Settings:
     reply_gap_ms: int = 650
     sleep_after_s: float = 300
     hub_port: int = 8765
+    remember: bool = True
+    memory_path: str = str(Path.home() / "Library" / "Application Support" / "Companion" / "memory.db")
+    memory_idle_s: float = 45
 
     @classmethod
     def from_env(cls) -> "Settings":

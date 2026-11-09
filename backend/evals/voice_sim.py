@@ -14,7 +14,7 @@ import argparse
 import asyncio
 import statistics
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 import numpy as np
 
@@ -129,7 +129,7 @@ def _speech(tts, text: str) -> np.ndarray:
 async def main() -> None:
     from companion.tts import KokoroSynthesizer
 
-    settings = Settings.from_env()
+    settings = replace(Settings.from_env(), remember=False)
     models = await load(settings)
     speaker = await asyncio.get_running_loop().run_in_executor(models.mlx, lambda: KokoroSynthesizer(voice="am_michael"))
     def speech(voice, text: str) -> np.ndarray:

@@ -53,6 +53,20 @@ To check latency and interruption without a microphone, run the scripted convers
 uv run python evals/voice_sim.py
 ```
 
+## Memory
+
+The companion remembers facts about you and dated events you mention, in `~/Library/Application Support/Companion/memory.db`. Nothing leaves your Mac.
+
+New memories are saved after 45 quiet seconds in voice mode, and when you quit the text chat. At the start of a session it gets a note with what is coming up, what just happened and a few facts. Later in a session, a memory rides along only when it relates to what you said. A past event stays on the list until the bot actually asks how it went.
+
+```sh
+uv run companion-memory            # list
+uv run companion-memory forget 3   # forget one
+uv run companion-memory clear      # forget everything
+```
+
+`COMPANION_REMEMBER=false` turns memory off. `uv run python evals/memory_eval.py` checks the whole loop with the real model, using a throwaway memory file.
+
 ## The overlay
 
 ```sh

@@ -31,6 +31,18 @@ class LLM:
             # Closing the connection is what tells Ollama to stop generating an abandoned reply.
             await response.close()
 
+    async def complete_json(self, messages: list[Message], max_tokens: int = 500) -> str:
+        """One non-streamed answer constrained to JSON, for background jobs like saving memories."""
+        response = await self.client.chat.completions.create(
+            model=self.settings.model,
+            messages=messages,
+            temperature=0.2,
+            max_tokens=max_tokens,
+            response_format={"type": "json_object"},
+            extra_body={"reasoning_effort": self.settings.reasoning_effort},
+        )
+        return response.choices[0].message.content or ""
+
     async def warm(self) -> None:
         """Load the model and keep it resident so the first reply skips the cold start.
 

@@ -2,6 +2,7 @@ import asyncio
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
+from datetime import datetime
 from enum import StrEnum
 
 import numpy as np
@@ -10,6 +11,7 @@ from companion.audio import AudioIO
 from companion.config import Settings
 from companion.conversation import Conversation
 from companion.hub import Event
+from companion.remember import Memorizer, with_memory
 from companion.reply import Mood, MoodEvent, SentenceEvent
 from companion.stt import Transcriber
 from companion.tts import Synthesizer
@@ -64,6 +66,8 @@ class VoiceLoop:
     ) -> None:
         self.io, self.settings, self.publish = io, settings, publish
         self.convo, self.stt, self.tts, self._mlx = models.convo, models.stt, models.tts, models.mlx
+        self.memorizer = models.memorizer
+        self._saving: asyncio.Task | None = None
         self.verbose = verbose
         self.state = State.IDLE
         self.turns: list[Turn] = []
@@ -96,12 +100,17 @@ class VoiceLoop:
         while True:
             await asyncio.sleep(1 / 30)
             self.publish({"type": "levels", "speech": round(self.io.level, 4), "mic": round(self._mic_level, 4)})
-            if self.state is State.IDLE and self.io.now() - self._idle_since > self.settings.sleep_after_s:
+            idle_for = self.io.now() - self._idle_since if self.state in (State.IDLE, State.SLEEPING) else 0
+            if self.state is State.IDLE and idle_for > self.settings.sleep_after_s:
                 self._set(State.SLEEPING)
+            if idle_for > self.settings.memory_idle_s and self.memorizer and self.convo.exchanges and not self._saving:
+                self._saving = asyncio.create_task(self._save_memories())
 
     def _on_vad(self, event: VadEvent) -> None:
         match event:
             case SpeechStarted():
+                if self._saving:
+                    self._saving.cancel()
                 if self.state in (State.THINKING, State.SPEAKING):
                     self._interrupt()
                 self._set(State.LISTENING)
@@ -125,10 +134,25 @@ class VoiceLoop:
         turn.interrupted_at = self.io.now()
         heard = [sentence for starts, sentence in turn.spoken if starts <= turn.interrupted_at]
         if heard:
-            self.convo.record(turn.text, f"[mood:{turn.mood}] {' '.join(heard)} …")
+            self.convo.interrupted(f"[mood:{turn.mood}] {' '.join(heard)} …")
             self._say(f"bot {DIM}[{turn.mood}]{RESET} › {' '.join(heard)} {DIM}(interrupted){RESET}")
         else:
             self._unanswered = turn.audio
+
+    async def _save_memories(self) -> None:
+        """Runs while the conversation is quiet; talking cancels it and the turns wait for next time."""
+        batch = list(self.convo.exchanges)
+        try:
+            added = await self.memorizer.remember(batch, datetime.now())
+            del self.convo.exchanges[: len(batch)]
+            for memory in added:
+                self._say(f"{DIM}· remembered: {memory.text}{' (' + str(memory.on) + ')' if memory.on else ''}{RESET}")
+        except asyncio.CancelledError:
+            pass
+        except Exception as error:
+            self._say(f"{DIM}· could not save memories: {error!r}{RESET}")
+        finally:
+            self._saving = None
 
     def _turn_finished(self, task: asyncio.Task) -> None:
         if task.cancelled() or task.exception() is None:
@@ -199,6 +223,7 @@ class VoiceLoop:
         if state is State.LISTENING:
             self._say(f"{DIM}· listening{RESET}")
         elif state is State.SLEEPING:
+            self.convo.new_session()
             self._say(f"{DIM}· dozing off{RESET}")
 
     def _say(self, line: str) -> None:
@@ -212,6 +237,7 @@ class Models:
     stt: Transcriber
     tts: Synthesizer
     mlx: ThreadPoolExecutor
+    memorizer: Memorizer | None = None
 
 
 async def load(settings: Settings) -> Models:
@@ -232,9 +258,9 @@ async def load(settings: Settings) -> Models:
     mlx = ThreadPoolExecutor(max_workers=1, thread_name_prefix="mlx")
     stt, tts = await asyncio.get_running_loop().run_in_executor(mlx, build)
     await llm.warm()
-    convo = Conversation(llm, settings)
+    convo, memorizer = with_memory(llm, settings)
     await convo.prime()
-    return Models(convo, stt, tts, mlx)
+    return Models(convo, stt, tts, mlx, memorizer)
 
 
 async def run() -> None:
