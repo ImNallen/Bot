@@ -53,6 +53,18 @@ To check latency and interruption without a microphone, run the scripted convers
 uv run python evals/voice_sim.py
 ```
 
+## The overlay
+
+```sh
+cd overlay
+npm install
+npm run tauri dev
+```
+
+A transparent, always-on-top window puts the bot in the bottom-right corner of your main display. Clicks pass through everywhere except the bot. Until the backend drives it, clicking the bot steps through its states and moods. It has no menu yet, so quit with `pkill -f companion-overlay`.
+
+`npm run dev` and http://localhost:1420/dev.html shows every expression and state in both themes, plus a live bot with buttons. `npm test` runs the animation tests.
+
 ## Tune the voice
 
 ```sh
