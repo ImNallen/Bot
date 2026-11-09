@@ -1,0 +1,22 @@
+[project]
+name = "companion"
+version = "0.1.0"
+description = "Local voice companion backend"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "httpx>=0.28.1",
+    "openai>=1.50",
+]
+
+[project.scripts]
+companion-chat = "companion.chat:main"
+
+[dependency-groups]
+dev = ["pytest>=8"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
