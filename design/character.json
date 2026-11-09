@@ -1,0 +1,187 @@
+{
+  "units": "Design px at 240 px bot diameter. The overlay renders at 120 pt, so 2 design px = 1 pt.",
+  "geometry": {
+    "diameter": 240,
+    "eye": {
+      "width": 40,
+      "height": 74,
+      "centerY": 114,
+      "spacing": 80
+    },
+    "look": {
+      "maxX": 16,
+      "maxY": 10
+    },
+    "blush": {
+      "width": 26,
+      "height": 12,
+      "offsetX": 26,
+      "y": 156
+    },
+    "mouth": {
+      "width": 20,
+      "minHeight": 4,
+      "maxHeight": 14,
+      "y": 163
+    }
+  },
+  "params": {
+    "w": "Eye width as a multiple of geometry.eye.width.",
+    "h": "Eye height as a multiple of geometry.eye.height.",
+    "lid": "Top-lid drop, 0 (open) to 1 (closed), as a fraction of eye height.",
+    "angle": "Lid angle in degrees. Positive tilts the inner corner down (annoyed). Negative tilts the outer corner down (sad).",
+    "smile": "Bottom cutout depth, 0 to 1, as a fraction of eye height. Around 0.5 gives ^ ^ eyes.",
+    "lookX": "Gaze offset, -1 to 1, scaled by geometry.look.maxX.",
+    "lookY": "Gaze offset, -1 to 1, scaled by geometry.look.maxY. Positive looks down.",
+    "blush": "Cheek blush opacity, 0 to 1."
+  },
+  "expressions": {
+    "neutral": {
+      "w": 1.0,
+      "h": 1.0,
+      "lid": 0.0,
+      "angle": 0,
+      "smile": 0.0,
+      "lookX": 0.0,
+      "lookY": 0.0,
+      "blush": 0.0
+    },
+    "happy": {
+      "w": 1.08,
+      "h": 0.92,
+      "lid": 0.0,
+      "angle": 0,
+      "smile": 0.5,
+      "lookX": 0.0,
+      "lookY": -0.1,
+      "blush": 0.7
+    },
+    "listening": {
+      "w": 1.06,
+      "h": 1.1,
+      "lid": 0.0,
+      "angle": 0,
+      "smile": 0.0,
+      "lookX": 0.0,
+      "lookY": -0.15,
+      "blush": 0.0
+    },
+    "thinking": {
+      "w": 0.95,
+      "h": 0.9,
+      "lid": 0.22,
+      "angle": 0,
+      "smile": 0.0,
+      "lookX": 0.7,
+      "lookY": -0.7,
+      "blush": 0.0
+    },
+    "sad": {
+      "w": 1.0,
+      "h": 0.9,
+      "lid": 0.32,
+      "angle": -20,
+      "smile": 0.0,
+      "lookX": 0.0,
+      "lookY": 0.45,
+      "blush": 0.0
+    },
+    "sleepy": {
+      "w": 1.04,
+      "h": 0.95,
+      "lid": 0.62,
+      "angle": -4,
+      "smile": 0.0,
+      "lookX": 0.0,
+      "lookY": 0.35,
+      "blush": 0.0
+    },
+    "surprised": {
+      "w": 1.18,
+      "h": 1.22,
+      "lid": 0.0,
+      "angle": 0,
+      "smile": 0.0,
+      "lookX": 0.0,
+      "lookY": -0.1,
+      "blush": 0.0
+    },
+    "annoyed": {
+      "w": 1.0,
+      "h": 0.95,
+      "lid": 0.38,
+      "angle": 22,
+      "smile": 0.0,
+      "lookX": 0.0,
+      "lookY": 0.1,
+      "blush": 0.0
+    }
+  },
+  "motion": {
+    "expressionTransitionMs": 220,
+    "blink": {
+      "intervalMs": [
+        2000,
+        5000
+      ],
+      "closeMs": 70,
+      "holdMs": 40,
+      "openMs": 110,
+      "doubleBlinkChance": 0.15
+    },
+    "bob": {
+      "amplitudePx": 3,
+      "periodMs": 3200
+    },
+    "idleGlance": {
+      "afterCursorStillMs": 2500,
+      "intervalMs": [
+        1500,
+        4000
+      ]
+    },
+    "sleep": {
+      "afterIdleMs": 300000
+    }
+  },
+  "themes": {
+    "dark": {
+      "shell": "#1C1E24",
+      "shellHighlight": "#3A3F4B",
+      "eye": "#F4F6FA",
+      "blush": "#FF7A9A",
+      "listening": "#5BD6FF",
+      "thinking": "#B49CFF",
+      "cloud": "#FFB547",
+      "surface": "#16171B",
+      "textPrimary": "#F2F3F5",
+      "textSecondary": "#9BA0AA",
+      "eyeGlow": "#F4F6FA73",
+      "surfaceGlass": "#16171BF0",
+      "hairline": "#FFFFFF14",
+      "chip": "#FFFFFF14",
+      "userBubble": "#FFFFFF1A",
+      "botBubble": "#F4F6FA12",
+      "listeningSoft": "#5BD6FF59"
+    },
+    "light": {
+      "shell": "#F4F5F8",
+      "shellHighlight": "#D3D6DE",
+      "eye": "#1C1E24",
+      "blush": "#FF7A9A",
+      "listening": "#1FA8E0",
+      "thinking": "#8B6CF0",
+      "cloud": "#FFB547",
+      "surface": "#FFFFFF",
+      "textPrimary": "#1C1E24",
+      "textSecondary": "#6B7080",
+      "eyeGlow": "#1C1E241F",
+      "surfaceGlass": "#FFFFFFF0",
+      "hairline": "#0000001A",
+      "chip": "#0000000F",
+      "userBubble": "#0000000F",
+      "botBubble": "#1C1E240A",
+      "listeningSoft": "#1FA8E059"
+    }
+  }
+}
