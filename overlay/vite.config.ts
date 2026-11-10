@@ -5,6 +5,6 @@ export default defineConfig({
   server: { port: 1420, strictPort: true, fs: { allow: [".."] } },
   build: {
     target: "safari16",
-    rollupOptions: { input: { overlay: "index.html", dev: "dev.html" } },
+    rollupOptions: { input: { overlay: "index.html", popover: "popover.html", dev: "dev.html" } },
   },
 });

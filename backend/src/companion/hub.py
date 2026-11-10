@@ -1,4 +1,5 @@
 import json
+from collections.abc import Callable
 from typing import Literal, TypedDict
 
 from websockets.asyncio.server import Server, ServerConnection, broadcast, serve
@@ -20,7 +21,21 @@ class LevelsEvent(TypedDict):
     mic: float
 
 
-Event = StateEvent | MoodEvent | LevelsEvent
+class StatusEvent(TypedDict):
+    type: Literal["status"]
+    micOn: bool
+    model: str
+    memories: int
+
+
+class TextEvent(TypedDict):
+    type: Literal["heard", "said"]
+    text: str
+
+
+Event = StateEvent | MoodEvent | LevelsEvent | StatusEvent | TextEvent
+
+COMMANDS = ("mute", "unmute", "sleep")
 
 
 class Hub:
@@ -32,6 +47,7 @@ class Hub:
 
     def __init__(self, host: str = "127.0.0.1", port: int = 8765) -> None:
         self.host, self.port = host, port
+        self.on_command: Callable[[str], None] = lambda name: None
         self._clients: set[ServerConnection] = set()
         self._latest: dict[str, str] = {}
         self._server: Server | None = None
@@ -46,7 +62,7 @@ class Hub:
             await self._server.wait_closed()
 
     def publish(self, event: Event) -> None:
-        if event["type"] in ("state", "mood"):
+        if event["type"] in ("state", "mood", "status"):
             self._latest[event["type"]] = json.dumps(event)
         broadcast(self._clients, json.dumps(event))
 
@@ -55,6 +71,18 @@ class Hub:
         try:
             for message in self._latest.values():
                 await client.send(message)
-            await client.wait_closed()
+            async for raw in client:
+                if name := parse_command(raw):
+                    self.on_command(name)
         finally:
             self._clients.discard(client)
+
+
+def parse_command(raw: str | bytes) -> str | None:
+    """A command from an overlay window, or None for anything that is not one."""
+    try:
+        message = json.loads(raw)
+    except (json.JSONDecodeError, TypeError):
+        return None
+    name = message.get("name") if isinstance(message, dict) and message.get("type") == "command" else None
+    return name if name in COMMANDS else None

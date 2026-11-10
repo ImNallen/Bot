@@ -4,12 +4,18 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Companion</title>
-    <style>
-      html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; user-select: none; -webkit-user-select: none; cursor: default; }
-      #bot { position: absolute; width: 160px; height: 160px; }
-    </style>
+    <link rel="stylesheet" href="/src/overlay.css" />
   </head>
   <body>
+    <div id="bubble" class="bubble" hidden><p></p><span class="tail"></span></div>
+    <section id="panel" class="panel" hidden>
+      <header>
+        <strong>Bot</strong><span id="panel-state">idle</span>
+        <button id="panel-close" aria-label="Close transcript">×</button>
+      </header>
+      <ol id="messages"></ol>
+      <footer id="panel-hint">Just talk. It answers when you pause.</footer>
+    </section>
     <canvas id="bot"></canvas>
     <script type="module" src="/src/main.ts"></script>
   </body>

@@ -37,6 +37,7 @@ class Turn:
     text: str = ""
     mood: Mood = Mood.NEUTRAL
     spoken: list[tuple[float, str]] = field(default_factory=list)
+    captions: list[asyncio.TimerHandle] = field(default_factory=list)
     transcribed_at: float | None = None
     first_sentence_at: float | None = None
     first_audio_at: float | None = None
@@ -68,6 +69,7 @@ class VoiceLoop:
         self.convo, self.stt, self.tts, self._mlx = models.convo, models.stt, models.tts, models.mlx
         self.memorizer = models.memorizer
         self._saving: asyncio.Task | None = None
+        self.mic_on = True
         self.verbose = verbose
         self.state = State.IDLE
         self.turns: list[Turn] = []
@@ -78,7 +80,23 @@ class VoiceLoop:
         self._idle_since = io.now()
         self._segmenter = Segmenter(threshold=settings.vad_threshold, start_ms=settings.start_ms, end_silence_ms=settings.pause_ms)
 
+    def command(self, name: str) -> None:
+        """From the overlay's menu: mute or unmute the microphone, or doze off now."""
+        if name in ("mute", "unmute"):
+            self.mic_on = name == "unmute"
+            self._publish_status()
+            self._say(f"{DIM}· microphone {'on' if self.mic_on else 'off'}{RESET}")
+        elif name == "sleep":
+            if self.state in (State.THINKING, State.SPEAKING):
+                self._interrupt()
+            self._set(State.SLEEPING)
+
+    def _publish_status(self) -> None:
+        memories = len(self.memorizer.store.all()) if self.memorizer else 0
+        self.publish({"type": "status", "micOn": self.mic_on, "model": self.settings.model, "memories": memories})
+
     async def run(self) -> None:
+        self._publish_status()
         vad, rechunk = SileroVad(), Rechunker()
         levels = asyncio.create_task(self._report_levels())
         try:
@@ -107,6 +125,8 @@ class VoiceLoop:
                 self._saving = asyncio.create_task(self._save_memories())
 
     def _on_vad(self, event: VadEvent) -> None:
+        if not self.mic_on:
+            return
         match event:
             case SpeechStarted():
                 if self._saving:
@@ -127,6 +147,8 @@ class VoiceLoop:
     def _interrupt(self) -> None:
         turn, self._turn = self._turn, None
         self.io.stop()
+        for caption in turn.captions if turn else []:
+            caption.cancel()
         if self._task:
             self._task.cancel()
         if turn is None:
@@ -145,6 +167,8 @@ class VoiceLoop:
         try:
             added = await self.memorizer.remember(batch, datetime.now())
             del self.convo.exchanges[: len(batch)]
+            if added:
+                self._publish_status()
             for memory in added:
                 self._say(f"{DIM}· remembered: {memory.text}{' (' + str(memory.on) + ')' if memory.on else ''}{RESET}")
         except asyncio.CancelledError:
@@ -170,6 +194,7 @@ class VoiceLoop:
             self._set(State.IDLE)
             return
         self._say(f"you › {turn.text}")
+        self.publish({"type": "heard", "text": turn.text})
         async for timed in self.convo.reply(turn.text):
             match timed.event:
                 case MoodEvent(mood):
@@ -184,6 +209,8 @@ class VoiceLoop:
                     if not starts:
                         continue
                     turn.first_audio_at = turn.first_audio_at or starts[0]
+                    delay = max(0.0, starts[0] - self.io.now())
+                    turn.captions.append(loop.call_later(delay, self.publish, {"type": "said", "text": sentence}))
                     if not turn.spoken:
                         self._set(State.SPEAKING)
                     turn.spoken.append((starts[0], sentence))
@@ -274,7 +301,9 @@ async def run() -> None:
     await hub.start()
     io = DeviceAudio(mic=settings.mic, speaker=settings.speaker, echo_cancellation=settings.echo_cancellation)
     print(f"{DIM}Listening. Just talk. Ctrl+C quits. Overlay link on ws://127.0.0.1:{hub.port}{RESET}\n", flush=True)
-    await VoiceLoop(io, models, settings, publish=hub.publish).run()
+    loop = VoiceLoop(io, models, settings, publish=hub.publish)
+    hub.on_command = loop.command
+    await loop.run()
 
 
 def main() -> None:

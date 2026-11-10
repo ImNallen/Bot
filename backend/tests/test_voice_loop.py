@@ -26,6 +26,24 @@ class QuietIO:
         pass
 
 
+def test_muting_ignores_speech_and_reports_status():
+    events: list[dict] = []
+    loop = VoiceLoop(QuietIO(), Models(FakeConversation(), None, None, None), Settings(), publish=events.append, verbose=False)
+    loop.command("mute")
+    loop._on_vad(SpeechStarted())
+    assert loop.state is State.IDLE
+    loop.command("unmute")
+    loop._on_vad(SpeechStarted())
+    assert loop.state is State.LISTENING
+    assert [e["micOn"] for e in events if e["type"] == "status"] == [False, True]
+
+
+def test_sleep_command_dozes_off_at_once():
+    loop = VoiceLoop(QuietIO(), Models(FakeConversation(), None, None, None), Settings(), verbose=False)
+    loop.command("sleep")
+    assert loop.state is State.SLEEPING
+
+
 def test_dozes_off_after_idle_and_wakes_when_spoken_to():
     events: list[dict] = []
     convo = FakeConversation()

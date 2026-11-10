@@ -162,7 +162,11 @@
       "chip": "#FFFFFF14",
       "userBubble": "#FFFFFF1A",
       "botBubble": "#F4F6FA12",
-      "listeningSoft": "#5BD6FF59"
+      "listeningSoft": "#5BD6FF59",
+      "bubbleGlass": "#1A1B2080",
+      "accentTint": "#5BD6FF1F",
+      "danger": "#FF6B6B",
+      "popover": "#16171B8C"
     },
     "light": {
       "shell": "#F4F5F8",
@@ -181,7 +185,11 @@
       "chip": "#0000000F",
       "userBubble": "#0000000F",
       "botBubble": "#1C1E240A",
-      "listeningSoft": "#1FA8E059"
+      "listeningSoft": "#1FA8E059",
+      "bubbleGlass": "#FFFFFF8C",
+      "accentTint": "#1FA8E01A",
+      "danger": "#E5484D",
+      "popover": "#FFFFFF8C"
     }
   }
 }
