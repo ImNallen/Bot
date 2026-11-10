@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Bot gallery</title>
+    <style>
+      body { margin: 0; font: 13px/1.4 -apple-system, system-ui, sans-serif; color: #1c1e24; background: #f6f7f9; }
+      section { padding: 28px 32px; }
+      section.dark { background: #1e1f24; color: #f2f3f5; }
+      section.light { background: #d9dce3; }
+      h2 { margin: 0 0 16px; font-size: 18px; font-weight: 600; }
+      .row { display: flex; flex-wrap: wrap; gap: 20px; }
+      figure { margin: 0; text-align: center; }
+      figure canvas { width: 160px; height: 160px; display: block; }
+      figcaption { opacity: 0.7; margin-top: 4px; }
+      #live-wrap { display: flex; gap: 32px; align-items: center; }
+      #live { width: 320px; height: 320px; }
+      .controls button { margin: 0 6px 6px 0; padding: 4px 10px; border-radius: 6px; border: 1px solid #0002; background: #fff; cursor: pointer; }
+      .controls button.on { background: #5bd6ff; }
+    </style>
+  </head>
+  <body>
+    <section class="light" id="live-section">
+      <h2>Live: follows your mouse, blinks, bobs, glances when the mouse is still</h2>
+      <div id="live-wrap"><canvas id="live"></canvas><div class="controls" id="controls"></div></div>
+    </section>
+    <section class="dark"><h2>Expressions · dark</h2><div class="row" id="expr-dark"></div></section>
+    <section class="light"><h2>Expressions · light</h2><div class="row" id="expr-light"></div></section>
+    <section class="dark"><h2>States · dark</h2><div class="row" id="state-dark"></div></section>
+    <section class="light"><h2>States · light</h2><div class="row" id="state-light"></div></section>
+    <script type="module" src="/src/dev.ts"></script>
+  </body>
+</html>
