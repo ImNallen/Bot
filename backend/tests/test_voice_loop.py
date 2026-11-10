@@ -104,3 +104,44 @@ def test_talking_cancels_saving_and_keeps_the_turns_for_later():
     convo = run_quietly(memorizer, speak_after=0.2)
     assert memorizer.batches == []
     assert len(convo.exchanges) == 1
+
+
+def test_with_interrupting_off_speech_over_the_bot_is_ignored():
+    loop = VoiceLoop(QuietIO(), Models(FakeConversation(), None, None, None), Settings(barge_in=False), verbose=False)
+    loop.state = State.SPEAKING
+    loop._on_vad(SpeechStarted())
+    assert loop.state is State.SPEAKING
+
+
+def test_with_learning_off_nothing_new_is_saved():
+    memorizer = SlowMemorizer(delay=0.01)
+    convo = FakeConversation()
+    convo.exchanges = [("I have a dentist appointment Friday", "[mood:neutral] Teeth important.")]
+
+    async def scenario():
+        loop = VoiceLoop(QuietIO(), Models(convo, None, None, None, memorizer), Settings(memory_idle_s=0.1, learn=False), verbose=False)
+        reporter = asyncio.create_task(loop._report_levels())
+        await asyncio.sleep(0.4)
+        reporter.cancel()
+
+    asyncio.run(scenario())
+    assert memorizer.batches == []
+
+
+def test_finished_and_interrupted_turns_are_counted_for_stats():
+    import numpy as np
+
+    from companion.reply import Mood
+    from companion.stats import StatsStore
+    from companion.voice import Turn
+
+    stats = StatsStore(":memory:")
+    loop = VoiceLoop(QuietIO(), Models(FakeConversation(), None, None, None, None, stats), Settings(), verbose=False)
+    done = Turn(np.zeros(32_000, dtype=np.float32), speech_end=10.0, text="hello", mood=Mood.HAPPY, spoken_seconds=3.0, first_audio_at=10.8)
+    cut = Turn(np.zeros(16_000, dtype=np.float32), speech_end=20.0, text="tell me more", first_audio_at=20.9, interrupted_at=22.4)
+    loop._record(done, "Hello friend.", interrupted=False)
+    loop._record(cut, "Long story", interrupted=True)
+    loop._record(Turn(np.zeros(10), speech_end=0.0), "", interrupted=False)
+    rows = stats.all()
+    assert [(r.mood, r.interrupted, r.user_seconds, r.bot_seconds) for r in rows] == [("happy", False, 2.0, 3.0), ("neutral", True, 1.0, 1.5)]
+    assert abs(rows[0].latency - 0.8) < 1e-9

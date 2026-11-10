@@ -1,6 +1,6 @@
 import json
-from collections.abc import Callable
-from typing import Literal, TypedDict
+from collections.abc import Awaitable, Callable
+from typing import Any, Literal, TypedDict
 
 from websockets.asyncio.server import Server, ServerConnection, broadcast, serve
 
@@ -26,28 +26,68 @@ class StatusEvent(TypedDict):
     micOn: bool
     model: str
     memories: int
+    prefs: dict[str, Any]
 
 
 class TextEvent(TypedDict):
-    type: Literal["heard", "said"]
+    type: Literal["heard", "said", "notice"]
     text: str
 
 
-Event = StateEvent | MoodEvent | LevelsEvent | StatusEvent | TextEvent
+class ReplyEvent(TypedDict):
+    """An answer to a `get` request: devices, voices, models, memories or stats, with its own fields."""
+
+    type: str
+
+
+Event = StateEvent | MoodEvent | LevelsEvent | StatusEvent | TextEvent | ReplyEvent
+
+
+class Command(TypedDict):
+    type: Literal["command"]
+    name: Literal["mute", "unmute", "sleep"]
+
+
+class Set(TypedDict):
+    type: Literal["set"]
+    key: str
+    value: Any
+
+
+class Get(TypedDict):
+    type: Literal["get"]
+    what: Literal["devices", "voices", "models", "memories", "stats"]
+
+
+class Preview(TypedDict):
+    type: Literal["preview"]
+    voice: str
+
+
+class Forget(TypedDict):
+    """One memory by id, or every memory when id is None (sent as {"all": true})."""
+
+    type: Literal["forget"]
+    id: int | None
+
+
+Request = Command | Set | Get | Preview | Forget
 
 COMMANDS = ("mute", "unmute", "sleep")
+GETS = ("devices", "voices", "models", "memories", "stats")
 
 
 class Hub:
-    """Broadcasts what the bot is doing to overlay windows over a WebSocket on localhost.
+    """Broadcasts what the bot is doing to overlay windows over a WebSocket on localhost, and answers their requests.
 
-    A client that connects late gets the current state and mood straight away, so a restarted
-    overlay shows the right face without waiting for the next change.
+    A client that connects late gets the current state, mood and status straight away, so a restarted
+    overlay shows the right face without waiting for the next change. A request's reply goes only to
+    the window that asked.
     """
 
     def __init__(self, host: str = "127.0.0.1", port: int = 8765) -> None:
         self.host, self.port = host, port
-        self.on_command: Callable[[str], None] = lambda name: None
+        self.on_request: Callable[[Request], Awaitable[Event | None]] = _ignore
         self._clients: set[ServerConnection] = set()
         self._latest: dict[str, str] = {}
         self._server: Server | None = None
@@ -72,17 +112,35 @@ class Hub:
             for message in self._latest.values():
                 await client.send(message)
             async for raw in client:
-                if name := parse_command(raw):
-                    self.on_command(name)
+                if (request := parse_request(raw)) and (reply := await self.on_request(request)):
+                    await client.send(json.dumps(reply))
         finally:
             self._clients.discard(client)
 
 
-def parse_command(raw: str | bytes) -> str | None:
-    """A command from an overlay window, or None for anything that is not one."""
+async def _ignore(request: Request) -> None:
+    return None
+
+
+def parse_request(raw: str | bytes) -> Request | None:
+    """A request from an overlay window, or None for anything malformed. Values of `set` are checked by whoever applies them."""
     try:
-        message = json.loads(raw)
+        m = json.loads(raw)
     except (json.JSONDecodeError, TypeError):
         return None
-    name = message.get("name") if isinstance(message, dict) and message.get("type") == "command" else None
-    return name if name in COMMANDS else None
+    if not isinstance(m, dict):
+        return None
+    match m.get("type"):
+        case "command" if m.get("name") in COMMANDS:
+            return {"type": "command", "name": m["name"]}
+        case "set" if isinstance(m.get("key"), str) and "value" in m:
+            return {"type": "set", "key": m["key"], "value": m["value"]}
+        case "get" if m.get("what") in GETS:
+            return {"type": "get", "what": m["what"]}
+        case "preview" if isinstance(m.get("voice"), str):
+            return {"type": "preview", "voice": m["voice"]}
+        case "forget" if m.get("all") is True:
+            return {"type": "forget", "id": None}
+        case "forget" if isinstance(m.get("id"), int) and not isinstance(m["id"], bool):
+            return {"type": "forget", "id": m["id"]}
+    return None

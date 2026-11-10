@@ -11,13 +11,16 @@ from companion.audio import AudioIO
 from companion.config import Settings
 from companion.conversation import Conversation
 from companion.hub import Event
+from companion.prefs import menu_prefs
 from companion.remember import Memorizer, with_memory
 from companion.reply import Mood, MoodEvent, SentenceEvent
+from companion.stats import StatsStore, TurnRecord
 from companion.stt import Transcriber
 from companion.tts import Synthesizer
-from companion.vad import Rechunker, Segmenter, SileroVad, SpeechEnded, SpeechStarted, VadEvent
+from companion.vad import SAMPLE_RATE, Rechunker, Segmenter, SileroVad, SpeechEnded, SpeechStarted, VadEvent
 
 DIM, RESET = "\033[2m", "\033[0m"
+PREVIEW_LINE = "Hello, friend. This is my voice. You like it, question?"
 
 
 class State(StrEnum):
@@ -37,6 +40,7 @@ class Turn:
     text: str = ""
     mood: Mood = Mood.NEUTRAL
     spoken: list[tuple[float, str]] = field(default_factory=list)
+    spoken_seconds: float = 0.0
     captions: list[asyncio.TimerHandle] = field(default_factory=list)
     transcribed_at: float | None = None
     first_sentence_at: float | None = None
@@ -67,7 +71,7 @@ class VoiceLoop:
     ) -> None:
         self.io, self.settings, self.publish = io, settings, publish
         self.convo, self.stt, self.tts, self._mlx = models.convo, models.stt, models.tts, models.mlx
-        self.memorizer = models.memorizer
+        self.memorizer, self.stats = models.memorizer, models.stats
         self._saving: asyncio.Task | None = None
         self.mic_on = True
         self.verbose = verbose
@@ -84,19 +88,36 @@ class VoiceLoop:
         """From the overlay's menu: mute or unmute the microphone, or doze off now."""
         if name in ("mute", "unmute"):
             self.mic_on = name == "unmute"
-            self._publish_status()
+            self.publish_status()
             self._say(f"{DIM}· microphone {'on' if self.mic_on else 'off'}{RESET}")
         elif name == "sleep":
             if self.state in (State.THINKING, State.SPEAKING):
                 self._interrupt()
             self._set(State.SLEEPING)
 
-    def _publish_status(self) -> None:
+    def publish_status(self) -> None:
         memories = len(self.memorizer.store.all()) if self.memorizer else 0
-        self.publish({"type": "status", "micOn": self.mic_on, "model": self.settings.model, "memories": memories})
+        self.publish({"type": "status", "micOn": self.mic_on, "model": self.settings.model, "memories": memories, "prefs": menu_prefs(self.settings)})
+
+    def settings_changed(self) -> None:
+        """Copies settings that parts of the loop keep their own copy of, after a change from the menu."""
+        self._segmenter.threshold = self.settings.vad_threshold
+        if self.tts:
+            self.tts.voice, self.tts.speed = self.settings.voice, self.settings.speech_speed
+        self.publish_status()
+
+    async def preview(self, voice: str) -> None:
+        """Says a short line in another voice, only while nobody is talking."""
+        if self.state not in (State.IDLE, State.SLEEPING):
+            return
+        chunks = await asyncio.get_running_loop().run_in_executor(self._mlx, lambda: list(self.tts.synthesize(PREVIEW_LINE, Mood.HAPPY, voice)))
+        if self.state in (State.IDLE, State.SLEEPING):
+            self.io.stop()
+            for chunk in chunks:
+                self.io.play(chunk, self.tts.sample_rate)
 
     async def run(self) -> None:
-        self._publish_status()
+        self.publish_status()
         vad, rechunk = SileroVad(), Rechunker()
         levels = asyncio.create_task(self._report_levels())
         try:
@@ -121,11 +142,11 @@ class VoiceLoop:
             idle_for = self.io.now() - self._idle_since if self.state in (State.IDLE, State.SLEEPING) else 0
             if self.state is State.IDLE and idle_for > self.settings.sleep_after_s:
                 self._set(State.SLEEPING)
-            if idle_for > self.settings.memory_idle_s and self.memorizer and self.convo.exchanges and not self._saving:
+            if idle_for > self.settings.memory_idle_s and self.memorizer and self.settings.learn and self.convo.exchanges and not self._saving:
                 self._saving = asyncio.create_task(self._save_memories())
 
     def _on_vad(self, event: VadEvent) -> None:
-        if not self.mic_on:
+        if not self.mic_on or (self.state is State.SPEAKING and not self.settings.barge_in):
             return
         match event:
             case SpeechStarted():
@@ -157,6 +178,7 @@ class VoiceLoop:
         heard = [sentence for starts, sentence in turn.spoken if starts <= turn.interrupted_at]
         if heard:
             self.convo.interrupted(f"[mood:{turn.mood}] {' '.join(heard)} …")
+            self._record(turn, " ".join(heard), interrupted=True)
             self._say(f"bot {DIM}[{turn.mood}]{RESET} › {' '.join(heard)} {DIM}(interrupted){RESET}")
         else:
             self._unanswered = turn.audio
@@ -168,7 +190,7 @@ class VoiceLoop:
             added = await self.memorizer.remember(batch, datetime.now())
             del self.convo.exchanges[: len(batch)]
             if added:
-                self._publish_status()
+                self.publish_status()
             for memory in added:
                 self._say(f"{DIM}· remembered: {memory.text}{' (' + str(memory.on) + ')' if memory.on else ''}{RESET}")
         except asyncio.CancelledError:
@@ -206,6 +228,7 @@ class VoiceLoop:
                     if not turn.spoken:
                         await self._hold_until_pause_is_real(turn)
                     starts = [self.io.play(chunk, self.tts.sample_rate) for chunk in chunks]
+                    turn.spoken_seconds += sum(len(chunk) for chunk in chunks) / self.tts.sample_rate
                     if not starts:
                         continue
                     turn.first_audio_at = turn.first_audio_at or starts[0]
@@ -214,8 +237,10 @@ class VoiceLoop:
                     if not turn.spoken:
                         self._set(State.SPEAKING)
                     turn.spoken.append((starts[0], sentence))
-        self._say(f"bot {DIM}[{turn.mood}]{RESET} › {' '.join(sentence for _, sentence in turn.spoken)}")
+        reply = " ".join(sentence for _, sentence in turn.spoken)
+        self._say(f"bot {DIM}[{turn.mood}]{RESET} › {reply}")
         self._say(self._timing(turn))
+        self._record(turn, reply, interrupted=False)
         while self.io.playing:
             await asyncio.sleep(0.02)
         self._turn = None
@@ -226,6 +251,16 @@ class VoiceLoop:
         wait = turn.speech_end + self.settings.reply_gap_ms / 1000 - self.io.now()
         if wait > 0:
             await asyncio.sleep(wait)
+
+    def _record(self, turn: Turn, reply: str, interrupted: bool) -> None:
+        if not self.stats or not turn.text:
+            return
+        heard_for = turn.interrupted_at - turn.first_audio_at if interrupted and turn.first_audio_at else turn.spoken_seconds
+        record = TurnRecord(datetime.now(), turn.mood.value, turn.latency, interrupted, turn.text, reply, len(turn.audio) / SAMPLE_RATE, max(0.0, heard_for))
+        try:
+            self.stats.add(record)
+        except Exception as error:
+            self._say(f"{DIM}· could not save stats: {error!r}{RESET}")
 
     def _timing(self, turn: Turn) -> str:
         if turn.latency is None:
@@ -265,6 +300,7 @@ class Models:
     tts: Synthesizer
     mlx: ThreadPoolExecutor
     memorizer: Memorizer | None = None
+    stats: StatsStore | None = None
 
 
 async def load(settings: Settings) -> Models:
@@ -287,22 +323,23 @@ async def load(settings: Settings) -> Models:
     await llm.warm()
     convo, memorizer = with_memory(llm, settings)
     await convo.prime()
-    return Models(convo, stt, tts, mlx, memorizer)
+    stats = StatsStore(settings.stats_path) if settings.remember else None
+    return Models(convo, stt, tts, mlx, memorizer, stats)
 
 
 async def run() -> None:
     from companion.audio import DeviceAudio
-
-    settings = Settings.from_env()
+    from companion.control import Control
     from companion.hub import Hub
 
+    settings = Settings.load()
     models = await load(settings)
     hub = Hub(port=settings.hub_port)
     await hub.start()
     io = DeviceAudio(mic=settings.mic, speaker=settings.speaker, echo_cancellation=settings.echo_cancellation)
     print(f"{DIM}Listening. Just talk. Ctrl+C quits. Overlay link on ws://127.0.0.1:{hub.port}{RESET}\n", flush=True)
     loop = VoiceLoop(io, models, settings, publish=hub.publish)
-    hub.on_command = loop.command
+    hub.on_request = Control(loop, models.convo, io.use_mic).handle
     await loop.run()
 
 

@@ -34,7 +34,7 @@ Run it from Terminal (or iTerm). macOS asks for microphone access the first time
 
 Just talk. It answers after you pause, and you can interrupt it at any time. Each turn prints how long it took from the end of your speech to its voice.
 
-Settings are environment variables:
+Most settings can be changed while it runs from the menu bar: microphone, voice, speaking speed, sensitivity, the pause before replying, interrupting, model, thinking and memory. Those choices are saved to `~/Library/Application Support/Companion/preferences.json`. Every setting is also an environment variable, and an environment variable wins over a saved choice:
 
 | Variable | Default | What it does |
 | --- | --- | --- |
@@ -65,7 +65,7 @@ uv run companion-memory forget 3   # forget one
 uv run companion-memory clear      # forget everything
 ```
 
-`COMPANION_REMEMBER=false` turns memory off. `uv run python evals/memory_eval.py` checks the whole loop with the real model, using a throwaway memory file.
+`COMPANION_REMEMBER=false` turns memory off, and with it the Stats page, which counts voice turns in `stats.db` next to the memories. `uv run python evals/memory_eval.py` checks the whole loop with the real model, using a throwaway memory file.
 
 ## The overlay
 

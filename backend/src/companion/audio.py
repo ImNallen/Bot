@@ -61,6 +61,32 @@ def find_device(name: str | None, kind: str) -> int | None:
     raise ValueError(f"No {kind} device matching {name!r}. Available: {[d['name'] for d in sd.query_devices()]}")
 
 
+def input_devices() -> list[dict]:
+    """Microphones for the menu. The kind is guessed from the name, since PortAudio does not say how a device connects."""
+    import sounddevice as sd
+
+    default = sd.default.device[0]
+    found, seen = [], set()
+    for index, device in enumerate(sd.query_devices()):
+        name = device["name"]
+        if device["max_input_channels"] < 1 or name in seen:
+            continue
+        seen.add(name)
+        found.append({"name": name, "detail": _kind_of(name), "default": index == default})
+    return found
+
+
+def _kind_of(name: str) -> str:
+    n = name.lower()
+    if "macbook" in n or "built-in" in n:
+        return "Built-in"
+    if any(k in n for k in ("airpods", "bluetooth", "buds", "beats", "headset")):
+        return "Bluetooth · adds delay"
+    if any(k in n for k in ("blackhole", "loopback", "teams", "zoom", "soundflower", "aggregate", "virtual")):
+        return "Virtual"
+    return ""
+
+
 class _Downsampler:
     """Device rate to 16 kHz with an anti-alias filter whose state carries across frames."""
 
@@ -141,22 +167,41 @@ class DeviceAudio:
         self._level = float(np.sqrt(np.mean((out / 32768.0) ** 2)))
         self._pairs.put((indata[:, 0].copy(), out))
 
-    async def frames(self) -> AsyncIterator[np.ndarray]:
+    def _open(self, devices: tuple[int | None, int | None]):
         import sounddevice as sd
 
-        loop = asyncio.get_running_loop()
-        mic: asyncio.Queue[np.ndarray] = asyncio.Queue()
-        worker = threading.Thread(target=self._process, args=(loop, mic), daemon=True)
-        worker.start()
-        self._stream = sd.Stream(
+        stream = sd.Stream(
             samplerate=DEVICE_RATE,
             blocksize=FRAME,
             dtype="int16",
             channels=(1, self._out_channels),
-            device=self._devices,
+            device=devices,
             callback=self._callback,
         )
-        self._stream.start()
+        stream.start()
+        return stream
+
+    def use_mic(self, name: str | None) -> None:
+        """Switch microphones while running. On failure the old one keeps working and the error is raised."""
+        devices = (find_device(name, "input"), self._devices[1])
+        if self._stream is None:
+            self._devices = devices
+            return
+        self._stream.stop()
+        self._stream.close()
+        try:
+            self._stream = self._open(devices)
+        except Exception:
+            self._stream = self._open(self._devices)
+            raise
+        self._devices = devices
+
+    async def frames(self) -> AsyncIterator[np.ndarray]:
+        loop = asyncio.get_running_loop()
+        mic: asyncio.Queue[np.ndarray] = asyncio.Queue()
+        worker = threading.Thread(target=self._process, args=(loop, mic), daemon=True)
+        worker.start()
+        self._stream = self._open(self._devices)
         try:
             while True:
                 yield await mic.get()

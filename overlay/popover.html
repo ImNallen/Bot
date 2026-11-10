@@ -7,41 +7,68 @@
   </head>
   <body>
     <main id="popover">
-      <header class="who">
-        <canvas id="avatar" width="80" height="80"></canvas>
-        <div><strong>Bot</strong><span id="status">Not connected</span></div>
-        <span class="chip local"><i></i>Local</span>
-      </header>
+      <div class="page" id="main">
+        <header class="who">
+          <canvas id="avatar" width="80" height="80"></canvas>
+          <div><strong>Bot</strong><span id="status">Not connected</span></div>
+          <span class="chip local"><i></i>Local</span>
+        </header>
 
-      <div class="tiles">
-        <button class="tile" data-tile="mic"><svg viewBox="0 0 18 18"><path d="M9 2.5a2.5 2.5 0 0 1 2.5 2.5v4a2.5 2.5 0 0 1-5 0V5A2.5 2.5 0 0 1 9 2.5Z"/><path d="M4.5 8.5a4.5 4.5 0 0 0 9 0M9 13v2.5"/></svg><span>Mic on</span></button>
-        <button class="tile" data-tile="stayPut"><svg viewBox="0 0 18 18"><path d="M9 12v4M6.5 2.5h5l-.8 4.5 2.3 3H5l2.3-3-.8-4.5Z"/></svg><span>Stay put</span></button>
-        <button class="tile" data-tile="hidden"><svg viewBox="0 0 18 18"><path d="M2.5 9S5 4.5 9 4.5 15.5 9 15.5 9 13 13.5 9 13.5 2.5 9 2.5 9Z"/><path d="M3 15 15 3"/></svg><span>Hide</span></button>
-        <button class="tile" data-tile="sleep"><svg viewBox="0 0 18 18"><path d="M14.5 10.5A6 6 0 0 1 7.5 3.5a6 6 0 1 0 7 7Z"/></svg><span>Sleep</span></button>
+        <div class="tiles">
+          <button class="tile" data-tile="mic"><svg viewBox="0 0 18 18"><path d="M9 2.5a2.5 2.5 0 0 1 2.5 2.5v4a2.5 2.5 0 0 1-5 0V5A2.5 2.5 0 0 1 9 2.5Z"/><path d="M4.5 8.5a4.5 4.5 0 0 0 9 0M9 13v2.5"/></svg><span>Mic on</span></button>
+          <button class="tile" data-tile="stayPut"><svg viewBox="0 0 18 18"><path d="M9 12v4M6.5 2.5h5l-.8 4.5 2.3 3H5l2.3-3-.8-4.5Z"/></svg><span>Stay put</span></button>
+          <button class="tile" data-tile="hidden"><svg viewBox="0 0 18 18"><path d="M2.5 9S5 4.5 9 4.5 15.5 9 15.5 9 13 13.5 9 13.5 2.5 9 2.5 9Z"/><path d="M3 15 15 3"/></svg><span>Hide</span></button>
+          <button class="tile" data-tile="sleep"><svg viewBox="0 0 18 18"><path d="M14.5 10.5A6 6 0 0 1 7.5 3.5a6 6 0 1 0 7 7Z"/></svg><span>Sleep</span></button>
+        </div>
+
+        <section>
+          <h2>Listening</h2>
+          <div class="card">
+            <button class="row nav" data-page="microphone" data-needs-backend><span>Microphone</span><span class="value" id="mic-name">–</span></button>
+            <label class="row" data-needs-backend><span>Interrupt when I talk</span><input type="checkbox" data-pref="interrupt" /></label>
+          </div>
+        </section>
+
+        <section>
+          <h2>Speaking</h2>
+          <div class="card">
+            <button class="row nav" data-page="voice" data-needs-backend><span>Voice</span><span class="value" id="voice-name">–</span></button>
+            <div id="speed" data-needs-backend></div>
+          </div>
+        </section>
+
+        <section>
+          <h2>On screen</h2>
+          <div class="card">
+            <div class="row"><span>Theme</span><div class="segmented" data-setting="theme"><button data-value="system">System</button><button data-value="light">Light</button><button data-value="dark">Dark</button></div></div>
+            <div class="row"><span>Size</span><div class="segmented" data-setting="size"><button data-value="s">S</button><button data-value="m">M</button><button data-value="l">L</button></div></div>
+            <label class="row"><span>Move away from cursor</span><input type="checkbox" data-setting="keepAway" /></label>
+            <label class="row"><span>Hide in fullscreen and calls</span><input type="checkbox" data-setting="hideInFullscreen" /></label>
+          </div>
+        </section>
+
+        <section>
+          <h2>Brain</h2>
+          <div class="card">
+            <button class="row nav" data-page="model" data-needs-backend><span>Model</span><span class="value" id="model">–</span></button>
+            <button class="row nav" data-page="memories" data-needs-backend><span>Memories</span><span class="value" id="memories">–</span></button>
+          </div>
+        </section>
+
+        <footer>
+          <button class="row action nav" data-page="stats" data-needs-backend><span>Stats</span><span class="value" id="friends"></span></button>
+          <button class="row action" id="open-transcript"><span>Open transcript</span><span class="value">⌘T</span></button>
+          <button class="row action" id="quit"><span>Quit</span><span class="value">⌘Q</span></button>
+        </footer>
       </div>
 
-      <section>
-        <h2>On screen</h2>
-        <div class="card">
-          <div class="row"><span>Theme</span><div class="segmented" data-setting="theme"><button data-value="system">System</button><button data-value="light">Light</button><button data-value="dark">Dark</button></div></div>
-          <div class="row"><span>Size</span><div class="segmented" data-setting="size"><button data-value="s">S</button><button data-value="m">M</button><button data-value="l">L</button></div></div>
-          <label class="row"><span>Move away from cursor</span><input type="checkbox" data-setting="keepAway" /></label>
-          <label class="row"><span>Hide in fullscreen and calls</span><input type="checkbox" data-setting="hideInFullscreen" /></label>
-        </div>
-      </section>
-
-      <section>
-        <h2>Brain</h2>
-        <div class="card">
-          <div class="row"><span>Model</span><span class="value" id="model">–</span></div>
-          <div class="row"><span>Memories</span><span class="value" id="memories">–</span></div>
-        </div>
-      </section>
-
-      <footer>
-        <button class="row action" id="open-transcript"><span>Open transcript</span></button>
-        <button class="row action" id="quit"><span>Quit</span><span class="value">⌘Q</span></button>
-      </footer>
+      <div class="page sub" id="sub" hidden>
+        <header class="sub-head">
+          <button class="back" id="back"></button>
+          <h1 id="sub-title"></h1>
+        </header>
+        <div id="sub-body"></div>
+      </div>
     </main>
     <script type="module" src="/src/popover.ts"></script>
   </body>

@@ -12,7 +12,7 @@ HELP = "Type to talk. /memories lists what it remembers, /reset clears the conve
 
 
 async def run() -> None:
-    settings = Settings.from_env()
+    settings = Settings.load()
     llm = LLM(settings)
     print(f"{DIM}Loading {settings.model}…{RESET}", flush=True)
     await llm.warm()

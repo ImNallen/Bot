@@ -3,29 +3,49 @@ import json
 
 from websockets.asyncio.client import connect
 
-from companion.hub import Hub
+from companion.hub import Hub, parse_request
 
 
 async def received(ws, count: int) -> list[dict]:
     return [json.loads(await asyncio.wait_for(ws.recv(), 1)) for _ in range(count)]
 
 
-def test_commands_from_clients_reach_the_handler_and_junk_is_ignored():
+def test_requests_reach_the_handler_replies_go_to_the_asker_and_junk_is_ignored():
     async def scenario():
         hub = Hub(port=0)
-        got: list[str] = []
-        hub.on_command = got.append
+        got: list[dict] = []
+
+        async def handle(request):
+            got.append(request)
+            return {"type": "voices", "voices": []} if request["type"] == "get" else None
+
+        hub.on_request = handle
         await hub.start()
+        url = f"ws://127.0.0.1:{hub.port}"
         try:
-            async with connect(f"ws://127.0.0.1:{hub.port}") as client:
-                for raw in ['{"type":"command","name":"mute"}', '{"type":"command","name":"self-destruct"}', "nonsense", '{"type":"command","name":"sleep"}']:
-                    await client.send(raw)
-                await asyncio.sleep(0.1)
+            async with connect(url) as asker, connect(url) as bystander:
+                for raw in ['{"type":"command","name":"mute"}', '{"type":"command","name":"self-destruct"}', "nonsense", '{"type":"get","what":"voices"}']:
+                    await asker.send(raw)
+                assert await received(asker, 1) == [{"type": "voices", "voices": []}]
+                try:
+                    await asyncio.wait_for(bystander.recv(), 0.2)
+                    raise AssertionError("a reply went to a window that did not ask")
+                except TimeoutError:
+                    pass
         finally:
             await hub.stop()
         return got
 
-    assert asyncio.run(scenario()) == ["mute", "sleep"]
+    assert asyncio.run(scenario()) == [{"type": "command", "name": "mute"}, {"type": "get", "what": "voices"}]
+
+
+def test_parse_request_accepts_each_kind_and_refuses_ambiguous_ones():
+    assert parse_request('{"type":"set","key":"speed","value":1.2}') == {"type": "set", "key": "speed", "value": 1.2}
+    assert parse_request('{"type":"preview","voice":"af_bella"}') == {"type": "preview", "voice": "af_bella"}
+    assert parse_request('{"type":"forget","id":7}') == {"type": "forget", "id": 7}
+    assert parse_request('{"type":"forget","all":true}') == {"type": "forget", "id": None}
+    for raw in ['{"type":"forget"}', '{"type":"forget","id":true}', '{"type":"get","what":"secrets"}', '{"type":"set","key":"speed"}', "[1]"]:
+        assert parse_request(raw) is None, raw
 
 
 def test_clients_receive_events_and_late_joiners_get_current_state_and_mood():
